@@ -165,5 +165,16 @@ const patchedFocus = function (this: HTMLElement, options) {
 
 **结论（证据分层）**：**代码事实** —— 官方输入框是 Lexical contenteditable、Lexical 自带安卓分支、composing 期豁免选区协调；**实测（用户）** —— 普通输入框正常 / 横竖屏都坏 / 中文正常英文坏；**推断** —— 安卓软键盘的逐键英文（无 composing）触发 Lexical 选区协调失败 → 光标回最前。**两个插件都不是原因。**
 **还能再证伪的一条**：接蓝牙/USB 外接键盘打英文（走传统 keydown，不经过安卓软键盘的输入管道）应正常；或打开安卓输入法的英文联想/自动更正（让英文也走 composing）应也正常。
-**给用户的处置**：① 外接键盘（最实用）；② 开英文联想/自动更正试试；③ 先用中文输入法输英文（很多输入法可直接输英文且走 composing）；④ 这是官方输入框的框架+平台问题，与我们的分组插件无关，不必再停用/重启。
+**给用户的处置**：① 外接键盘（**这条后来被我收回：机制与语言无关，外接键盘大概率没用**）；② 开英文联想/自动更正；③ 先用中文输入法输英文；④ 见下方「第三轮：两块拼图合上」。
+
+### 第三轮：两块拼图合上（2026-10-21 · 独立调研员报告 `RECON-composer-input.md` 佐证）
+独立只读调研员从 `app.asar` 逐行取出官方输入框实现（asar 自带 SHA256 校验通过，`CONV:` = 官方 conversation 客户端 client.js），给出两条关键代码事实，与用户两条实测**同时吻合**：
+
+1. **中英分岔是官方自己做的**：`CONV:6593-6595` —— `inputType === 'insertCompositionText'`（输入法）**直接 return，不接管 DOM**；而 `insertText`（逐键英文）走 `CONV:6752-6761`：`preventDefault()` 后**由编辑器自己重写 DOM**。
+2. **官方依赖 `.focus()` 复位光标，且自己写明了后果**：`CONV:9051-9062` 每次应用选区都调 `s.focus({preventScroll:true})`（除带 `skip-selection-focus` 的更新）；`CONV:15362-15370` 注释原文：**"a bare DOM focus on the contenteditable would land the caret at the start instead."** 另有 `CONV:18386-18389` 只做裸 DOM focus、不接 `editor.focus()`。
+
+**合并结论**：逐键英文 → 官方重写 DOM → 靠 `.focus()` 复位光标 → **远程插件 `patchedFocus` 恰好吞掉 composer 的这次 focus** → 光标落在**开头**；中文（`insertCompositionText`）不重写 DOM，所以不需要复位 → **正常** ✓；普通小输入框不是 composer 字段（`isComposerField` 要求 `data-composer-input`）→ **不受影响** ✓。用户那两条实测因此**同时被解释**。
+**我先前撤回的原因（横屏也坏）也得到解释**：吞不吞取决于模块内的 `active` 标志，而它只在 `evaluate()`（`resize`/`orientationchange`）跑到时才被改；若平板那条路径没触发重算，**层在两种朝向都仍处于 active** → 两向都坏（推断，未在平板实测）。
+**因此归属是「远程插件的 focus 补丁 × 官方输入框依赖 focus 复位」的交互问题，与分组插件无关。**
+**最省事的确认**：在平板上**点一下输入框后立刻连续打英文** —— 若最初约 0.8 秒正常、之后就跳（`lastComposerTap` 的 800ms 窗口），即确认；或在远程端控制台执行 `window.__dshRemoteAdapt.setEnabled(false)` 后再打英文，应立刻正常。
 - **用户追加线索（2026-10-21）**：症状二**中文正常、英文逐键跳**，且要求定位是远程插件还是分组插件 → 已定位到**远程插件的移动适配层全局 focus 猴补丁**（证据见下），本项目零涉及。
