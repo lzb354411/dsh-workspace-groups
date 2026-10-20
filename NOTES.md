@@ -36,7 +36,7 @@
 ## 过程记录
 
 - 2026-10-20 本项目从零建立（`项目：dsh-workspace-groups ｜ 模式：新建`）。两名只读调研员并行产出 `RECON-client-loader.md`、`RECON-ui-workspace.md`；asar 解包脚本 `%TEMP%\dsh-asar-study\asar-tool.mjs`（无依赖自研）。
-- 临时产物目录（待清理确认）：`%TEMP%\dsh-asar-study\`、`%TEMP%\dsh-asar-recon1\`、`%TEMP%\dsh-asar-recon2\`。
+- 临时产物目录（待清理确认）：`%TEMP%\dsh-asar-study`、`%TEMP%\dsh-asar-recon1`、`%TEMP%\dsh-asar-recon2`。
 
 ## 2026-10-20 探路实验（阶段 3 实现 · T1/T2）
 
@@ -81,8 +81,8 @@
 - 教训：**「没试过的回滚 = 没有回滚」**。这条若没在交付前真跑，用户唯一的退路会是坏的。
 
 ### 交付时的系统级状态快照
-- 安装前 profile 备份：`<备份根>\_backup\20261020-104056\<用户主目录>\.dsh\profiles\desktop\`（bundles 基线 **22**）
-- 拖动真机测试前的工作区登记备份：`<备份根>\_backup\20261020-115438\<用户主目录>\.dsh\storages\`
+- 安装前 profile 备份：`<备份根>\_backup\20261020-104056\<用户主目录>\.dsh\profiles\desktop`（bundles 基线 **22**）
+- 拖动真机测试前的工作区登记备份：`<备份根>\_backup\20261020-115438\<用户主目录>\.dsh\storages`
 - 分组数据：`<DSH_HOME>\storages\workspace-groups.json`（含最多 5 份 `.bak-`）
 
 ### 交付完成（2026-10-20，用户验收通过）
@@ -179,7 +179,7 @@ const patchedFocus = function (this: HTMLElement, options) {
 **最省事的确认**：在平板上**点一下输入框后立刻连续打英文** —— 若最初约 0.8 秒正常、之后就跳（`lastComposerTap` 的 800ms 窗口），即确认；或在远程端控制台执行 `window.__dshRemoteAdapt.setEnabled(false)` 后再打英文，应立刻正常。
 
 ### 第四轮：可逆补丁落地（2026-10-21，用户选 A）
-- **交付位置**：`E:\DSH\03-DSH-plugins\2026-10-21-remote-web-ui-focus-patch\`（任务目录），含 `patch.mjs`（锚点式、`--apply/--restore/--verify`）+ `apply/restore/verify` 三组双击产物（`.bat`=纯 ASCII 启动器、中文在带 BOM 的 `.ps1`）+ `README.md`。
+- **交付位置**：`E:\DSH\03-DSH-plugins\2026-10-21-remote-web-ui-focus-patch`（任务目录），含 `patch.mjs`（锚点式、`--apply/--restore/--verify`）+ `apply/restore/verify` 三组双击产物（`.bat`=纯 ASCII 启动器、中文在带 BOM 的 `.ps1`）+ `README.md`。
 - **改了什么**：只改已装副本 `…\@linxin666\dsh-remote-web-ui\lib\client.js` 的那一处吞掉判断，新增两条**放行**——① 选区/光标已在该字段内；② 该字段 1500ms 内发生过 `beforeinput`/`input`（新增两个捕获监听只用于记时间戳）。带 `BEGIN/END` 哨兵与中文注释，其余零改动；Host 半边 `lib/index.js` 未动。
 - **备份两处**（都已独立核对 = 原件 `7256DE3F…FCBB`、245870 字节）：同目录 `client.js.bak-20261021-005906`；`E:\DSH\_backup\20261021-005906\Users\14544\.dsh\profiles\desktop\node_modules\@linxin666\dsh-remote-web-ui\lib\client.js`。
 - **补丁前后哈希**：原件 `7256DE3F81D886041291D6CC9C84103A60734D17F4D046EBC4E11A932F18FCBB` → 补丁后 `E4C358DBE2C90D588D8A775C98F1FC390CE44680672BDD31DD5B2E269791F95D`（245870 → 248296 字节，净增 34 行）。
