@@ -125,7 +125,10 @@
 - 8 个工作区 id 现均存在（核过 `workspace.json`）→ 恢复安全。
 - 从 `.bak-20261021-000710` 恢复：**4 组 + 8 条归属**；被清空的那份另存 `.bak-20261021-161604-before-restore`。
 
-### 第二个症状（远程端输入框光标跳到最前）：**定位到远程插件，非本项目**
+### 第二个症状（平板打英文光标跳最前）：**根因=官方输入框（Lexical contenteditable）在安卓上的行为，与两个插件都无关**
+
+> ⚠️ **本节下方原标题写的是"定位到远程插件"，那是我的错误归属，已被用户实测否定**（见末尾「第二轮取证与更正」）。保留原文以便追溯推理过程，**以更正后的结论为准**。
+
 **新线索（用户实测）**：**中文正常，英文逐键输入就跳到最前**。→ 说明有个东西在拦"逐键事件"（输入法把按键吃掉了，所以中文不受影响）。
 
 **已排除（代码事实）**：本项目 `src/grouping/` 对 `addEventListener` 只有 `pagehide`/`focus`/`visibilitychange`（状态同步用）；`\.focus\(|contenteditable|data-composer|prototype\.|execCommand|clipboard` **零命中** → 我们**没有**任何全局按键/焦点/选区处理，也没碰输入框。
@@ -150,4 +153,17 @@ const patchedFocus = function (this: HTMLElement, options) {
 - 候选（均**推断**，无证据）：① 事故期间"未 ready → 每次渲染都 changed → commit"造成的连续重渲染；② 远程通道（`remote-channel*`）同步 UI 状态时的重渲染与输入框争用；③ 该插件移动适配层自身的输入处理问题。
 - 隔离测法（未做）：本地刷新后远程端刷新复测 → 仍不行则 `rollback.bat` 停用本插件 + 重启，再复测远程端输入。**根因未定位前不宣称已修。**
 - **用户裁决（2026-10-21）**：① 症状二先由用户刷新远程端复测；② 本次修复**推送到公开仓库**（已推，远端 86c5c97）。
+
+### 第二轮取证与更正（2026-10-21 · 最终结论）
+**上面那个"远程插件 focus 补丁"的归属是错的**，用户实测否定了它：① **平板横竖屏都坏**，而那个补丁只在 `orientation: portrait + pointer: coarse + innerWidth < 1100` 时生效（`mobile-adapt.ts:104-109`）；② 平板上的**普通小输入框打英文完全正常**（起名框/重命名框/设置搜索框），只有官方大输入框坏 → 排除"全局按键/焦点被劫持"，锁定**输入框自身**。
+
+**代码事实（从官方 `app.asar` 直接取出，只读；两个探针脚本在 `%TEMP%`，用完即删）**：
+- 官方输入框是 **Lexical 驱动的 contenteditable**：`@deepseek-ai/dsh-client-ui-conversation/lib/client.js` L18102（`data-composer-input` + `role=textbox` + `suppressContentEditableWarning`）、L5345（`data-lexical-slot`）、L5283 起是 **`lexical@0.49.0` 的打包产物**（`…/node_modules/lexical/dist/Lexical.prod.mjs`）、L5303 是 Lexical 的平台判定（`/Android/.test(navigator.userAgent)`、iPad/iPhone、Safari、Firefox）。
+- 输入路径 = **自己接管输入**：L6592 注册 `beforeinput`；L6708/L6753 对 `inputType === 'insertText'` 先 `preventDefault()` 再手动插入；L5635/L6624 做选区保存与恢复（`anchorOffset/focusOffset`）；L8936 监听 `selectionchange/beforeinput/compositionstart/compositionend`。
+- **中文为什么没事（代码里直接看得到豁免）**：L6524 `if (e.isComposing()) return`；L6610 多处 `!a.isComposing() && …` → **composing 期间跳过选区协调**；只有"无 composing 的逐键输入"（英文）才会走那条"preventDefault + 手动插入 + 选区协调"的脆弱路径。
+- 归属排查：本项目 `src/grouping/` 对输入/焦点/选区/原型补丁**零命中**；profile 下 33 个已装包产物里只有第三方插件匹配 `data-composer-input|prototype.focus=`（4 处，全在竖屏适配层，竖屏才生效）。
+
+**结论（证据分层）**：**代码事实** —— 官方输入框是 Lexical contenteditable、Lexical 自带安卓分支、composing 期豁免选区协调；**实测（用户）** —— 普通输入框正常 / 横竖屏都坏 / 中文正常英文坏；**推断** —— 安卓软键盘的逐键英文（无 composing）触发 Lexical 选区协调失败 → 光标回最前。**两个插件都不是原因。**
+**还能再证伪的一条**：接蓝牙/USB 外接键盘打英文（走传统 keydown，不经过安卓软键盘的输入管道）应正常；或打开安卓输入法的英文联想/自动更正（让英文也走 composing）应也正常。
+**给用户的处置**：① 外接键盘（最实用）；② 开英文联想/自动更正试试；③ 先用中文输入法输英文（很多输入法可直接输英文且走 composing）；④ 这是官方输入框的框架+平台问题，与我们的分组插件无关，不必再停用/重启。
 - **用户追加线索（2026-10-21）**：症状二**中文正常、英文逐键跳**，且要求定位是远程插件还是分组插件 → 已定位到**远程插件的移动适配层全局 focus 猴补丁**（证据见下），本项目零涉及。
