@@ -101,7 +101,9 @@ export function WSG_sanitizeState(raw, workspaceIds) {
 	picked.sort((a, b) => (a.order - b.order) || (a.at - b.at));
 	const groups = picked.map((group, index) => ({ id: group.id, name: group.name, order: index }));
 	const idSet = new Set(groups.map((group) => group.id));
-	const known = workspaceIds === void 0 ? void 0 : new Set(workspaceIds);
+	// 「拿不到可信的工作区全集」= 不清洗。**空数组同样算拿不到** —— 否则「列表还没加载出来」
+	// 会被解释成「全集为空」，把所有归属判成残骸（2026-10-21 生产事故的根因）。
+	const known = Array.isArray(workspaceIds) && workspaceIds.length > 0 ? new Set(workspaceIds) : void 0;
 	const rawMembership = raw.membership !== null && typeof raw.membership === "object" ? raw.membership : {};
 	const membership = {};
 	for (const workspaceId of Object.keys(rawMembership)) {
@@ -115,7 +117,12 @@ export function WSG_sanitizeState(raw, workspaceIds) {
 		groups,
 		membership
 	};
-	return { state, changed: !WSG_sameState(state, raw) };
+	return {
+		state,
+		changed: !WSG_sameState(state, raw),
+		// 「这次到底有没有用可信全集做过清洗」—— 调用方据此决定有没有资格对清洗结果做任何动作
+		usedWorkspaceFilter: known !== void 0
+	};
 }
 
 /** 按 id 找组（找不到返回 undefined） */
@@ -196,7 +203,9 @@ export function WSG_reorderGroups(groups, dragId, targetId, half) {
  */
 export function WSG_project(options) {
 	const sections = Array.isArray(options.sections) ? options.sections : [];
-	const workspaceIds = Array.isArray(options.workspaceIds) ? options.workspaceIds : [];
+	// 语义：**不传 / 空数组 = 拿不到可信的工作区全集 = 不清洗**（宁可留脏，绝不误删）。
+	// 2026-10-21 生产事故就是这里把 undefined 归一成了 []，于是远程端 8 条归属被判残骸、清空落盘。
+	const workspaceIds = Array.isArray(options.workspaceIds) && options.workspaceIds.length > 0 ? options.workspaceIds : void 0;
 	const collapsed = options.collapsed !== null && typeof options.collapsed === "object" ? options.collapsed : {};
 	const sanitized = WSG_sanitizeState(options.state, workspaceIds);
 	const state = sanitized.state;
@@ -250,6 +259,9 @@ export function WSG_project(options) {
 		buckets,
 		state,
 		changed: sanitized.changed,
+		// 明确字段：这次**真的**用可信的工作区全集做过清洗吗？只有它为 true 时，清洗结果才有资格被任何
+		// 自动动作（写回 / 持久化）采用 —— 这是把「谁有权动用户数据」写成可断言契约的那一道闸。
+		cleanupApplied: sanitized.usedWorkspaceFilter,
 		groupIdOrder: buckets.map((bucket) => bucket.id)
 	};
 }

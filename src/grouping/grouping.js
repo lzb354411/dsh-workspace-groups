@@ -558,11 +558,11 @@ function WSG_renderTree(ctx) {
 		workspaceIds,
 		collapsed: snapshot.collapsed
 	});
-	const salt = projected.changed ? "1" : "0";
-	react.useEffect(() => {
-		if (salt !== "1") return;
-		WSG_commit(projected.state);
-	}, [salt]);
+	// 【2026-10-21 生产事故】这里曾经有一条 `WSG_commit(projected.state)` 的自动写回：只要「清洗」判断
+	// 错了（远程端 ready=false 时 workspaceIds 被归一成 [] → 8 条归属全被判残骸），它就会把用户的归属
+	// **清空落盘**。现在起 **永不自动写回清洗结果**：Host 允许悬空记录、渲染本来就忽略它，所以自动写回的
+	// 收益是零、风险全在（project.cleanupApplied 只是观测字段）。用户任何一次真实操作都会整份写回，
+	// 文件自然会被清干净 —— F13 的可见要求（组内不留空壳行）靠「渲染时忽略」就已满足。
 
 	const rows = [];
 	if (!isWorkspaceMode) {

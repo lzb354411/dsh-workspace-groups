@@ -517,6 +517,83 @@ check("G10 提示与「能不能建组」共用同一条规则（不会出现「
 	}
 });
 
+console.log("== H 生产事故回归（2026-10-21 远程端把 8 条归属清空落盘） ==");
+
+// 事故当天的真实形状：4 个组 + 8 条归属
+const INCIDENT_STATE = {
+	version: 1,
+	groups: [
+		{ id: "g-00000001", name: "组A", order: 0 },
+		{ id: "g-00000002", name: "组B", order: 1 },
+		{ id: "g-00000003", name: "组C", order: 2 },
+		{ id: "g-00000004", name: "组D", order: 3 }
+	],
+	membership: {
+		w1: "g-00000001",
+		w2: "g-00000001",
+		w3: "g-00000002",
+		w4: "g-00000002",
+		w5: "g-00000003",
+		w6: "g-00000003",
+		w7: "g-00000004",
+		w8: "g-00000004"
+	}
+};
+const INCIDENT_SECTIONS = ["w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8"].map((id) => section(id));
+
+check("H1 完全不传 workspaceIds（= 远程端 ready 为假时的真实入口）→ 8 条归属一条不少、且未做清洗", () => {
+	const p = WSG_project({ state: INCIDENT_STATE, sections: INCIDENT_SECTIONS, collapsed: {} });
+	eq(Object.keys(p.state.membership).length, 8, "归属条数不能少");
+	eq(p.state.membership, INCIDENT_STATE.membership, "归属内容逐条一致");
+	eq(p.changed, false, "没有残骸 → 不该认为「需要写回」");
+	eq(p.cleanupApplied, false, "没拿到可信全集 → 这次没有做清洗");
+	eq(p.state.groups.length, 4, "组一个不少");
+});
+
+check("H2 workspaceIds: [] 与不传等价（空数组 = 拿不到可信全集 = 不清洗）", () => {
+	const p = WSG_project({ state: INCIDENT_STATE, sections: INCIDENT_SECTIONS, workspaceIds: [], collapsed: {} });
+	eq(p.state.membership, INCIDENT_STATE.membership, "空数组绝不能被当成「全集为空」");
+	eq(p.changed, false);
+	eq(p.cleanupApplied, false);
+});
+
+check("H2b 同一不变量的第二道入口：直接调 sanitize 传空数组也不许清洗", () => {
+	const res = WSG_sanitizeState(INCIDENT_STATE, []);
+	eq(res.state.membership, INCIDENT_STATE.membership);
+	eq(res.changed, false);
+	eq(res.usedWorkspaceFilter, false);
+});
+
+check("H3 F13 路径不能被修坏：传了可信全集时，不在全集里的记录仍然被忽略", () => {
+	const p = WSG_project({ state: INCIDENT_STATE, sections: INCIDENT_SECTIONS, workspaceIds: ["w1", "w2", "w3", "w4", "w5", "w6", "w7"], collapsed: {} });
+	eq(p.cleanupApplied, true, "这次确实用可信全集清洗了");
+	eq(Object.keys(p.state.membership).length, 7);
+	eq(p.state.membership.w8, void 0, "w8（已被官方删掉）被当残骸忽略");
+	eq(p.changed, true, "有残骸 → changed=true（现在只用于观测，不再触发自动写回）");
+	eq(p.buckets.filter((b) => b.id === "g-00000004")[0].memberCount, 1, "组D 里只剩 w7 —— 界面无空壳行");
+});
+
+/**
+ * 文本断言前先去掉 `//` 行注释：否则「在注释里说明某个调用被移除」会被误报成「真的调用了」
+ * （2026-10-21 就踩到这条 —— H4 第一次跑红，是因为修复说明里引用了那句被删掉的调用）。
+ */
+function stripLineComments(text) {
+	return text
+		.split("\n")
+		.map((line) => {
+			const at = line.indexOf("//");
+			return at === -1 ? line : line.slice(0, at);
+		})
+		.join("\n");
+}
+
+check("H4 事故二传手已拆除：grouping.js 里没有任何「自动写回清洗结果」的调用", () => {
+	const src = fs.readFileSync(path.join(ROOT, "src", "grouping", "grouping.js"), "utf8");
+	ok(stripLineComments(src).includes("WSG_commit(projected.state)") === false, "仍在自动写回清洗结果 —— 这正是把用户归属清空落盘的那一步");
+	ok(src.includes("永不自动写回清洗结果"), "缺少「为什么不写回」的显式约定（后人会手痒加回来）");
+	ok(src.includes("ctx.ready === true"), "I3 的 ready 门仍保留");
+});
+
 console.log("== F 结构闸门 ==");
 
 check("grouping.js 是自包含注入文本：不含任何 import / export", () => {
@@ -553,6 +630,9 @@ if (fs.existsSync(BUILT)) {
 		ok(built.includes("// ==== anchor.pure.js ===="), "注入段含 anchor.pure.js");
 		ok(built.includes("// ==== project.pure.js ===="), "注入段含 project.pure.js");
 		ok(built.includes("// ==== writer.pure.js ===="), "注入段含 writer.pure.js");
+		ok(built.includes("// ==== sync.pure.js ===="), "注入段含 sync.pure.js");
+		ok(built.includes("cleanupApplied: sanitized.usedWorkspaceFilter"), "产物含 cleanupApplied（「谁有权清洗」的显式契约）");
+		ok(stripLineComments(built).includes("WSG_commit(projected.state)") === false, "产物里也没有自动写回清洗结果（事故二传手已拆除）");
 		ok(built.includes("exports.apply = apply;"), "官方收尾语句仍在");
 	});
 } else {
