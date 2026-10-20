@@ -125,8 +125,29 @@
 - 8 个工作区 id 现均存在（核过 `workspace.json`）→ 恢复安全。
 - 从 `.bak-20261021-000710` 恢复：**4 组 + 8 条归属**；被清空的那份另存 `.bak-20261021-161604-before-restore`。
 
-### 第二个症状（远程端输入框光标跳到最前）：**未定位**
+### 第二个症状（远程端输入框光标跳到最前）：**定位到远程插件，非本项目**
+**新线索（用户实测）**：**中文正常，英文逐键输入就跳到最前**。→ 说明有个东西在拦"逐键事件"（输入法把按键吃掉了，所以中文不受影响）。
+
+**已排除（代码事实）**：本项目 `src/grouping/` 对 `addEventListener` 只有 `pagehide`/`focus`/`visibilitychange`（状态同步用）；`\.focus\(|contenteditable|data-composer|prototype\.|execCommand|clipboard` **零命中** → 我们**没有**任何全局按键/焦点/选区处理，也没碰输入框。
+远程插件那个捕获阶段的 `onKeydownCapture`（`mobile-adapt.ts:998-1011`）**只管 Enter**，且正确跳过 IME（`e.isComposing || e.keyCode === 229`）→ 不是它。
+
+**真正的根因（代码事实）**：`@linxin666/dsh-remote-web-ui@0.4.6` 的移动适配层在 **`HTMLElement.prototype.focus` 上打了全局猴补丁**（`src/client/mobile-adapt.ts:1249-1257`）：
+```js
+const patchedFocus = function (this: HTMLElement, options) {
+  if (active && isComposerField(this) && Date.now() - lastComposerTap >= 800) return   // ← 静默吞掉
+  lanOrigFocus.call(this, options)
+}
+```
+其注释自述输入框是官方 **contenteditable**（`data-composer-input`）；`lastComposerTap` 只在真实 `pointerdown` 时更新，**800ms 窗口之后重新开始吞**。
+
+**机制（推断，标注）**：英文逐键 → 官方 composer 每次都更新草稿并重渲染 contenteditable → contenteditable 被重写时光标会回到最前；官方随后若靠 `.focus()`（或依赖它）恢复，就被这个补丁吞掉 → 光标停在最前。中文走输入法 composition，逐键不触发重渲染 → 正常。800ms 窗口还解释了"刚点进去能打、打一会儿就开始跳"。
+
+**待证实的一点**：DSH 官方恢复光标的确切方式（本机看不到官方 composer 内部实现）——但不影响归属：**两个插件里只有远程插件在全局劫持 focus**。
+
+**决定性对照（都无需重启，待用户实测）**：① 手机**横屏**（横屏时适配层 `revert()`）再打英文；② 远程端控制台 `window.__dshRemoteAdapt.setEnabled(false)` 后打英文；③ 反向 `setEnabled(true)` 应又复现。
+处置建议：上报作者（Apache-2.0，GitHub `zhu1090093659/dsh-web`）；临时绕过=横屏或停用适配层。
 - 已排除/已确认：远程插件不碰我们的槽位；`WSG_commit` 只通知我们自己那份快照（`WSG_setSnapshot` → `WSG_subscribe`），不是全局 store。
 - 候选（均**推断**，无证据）：① 事故期间"未 ready → 每次渲染都 changed → commit"造成的连续重渲染；② 远程通道（`remote-channel*`）同步 UI 状态时的重渲染与输入框争用；③ 该插件移动适配层自身的输入处理问题。
 - 隔离测法（未做）：本地刷新后远程端刷新复测 → 仍不行则 `rollback.bat` 停用本插件 + 重启，再复测远程端输入。**根因未定位前不宣称已修。**
-- **用户裁决（2026-10-21）**：① 症状二先由用户刷新远程端复测；若仍复现，走隔离测试（停用插件→重启→复测），以切开"是我们的问题还是远程插件的问题"；② 本次修复**推送到公开仓库**。
+- **用户裁决（2026-10-21）**：① 症状二先由用户刷新远程端复测；② 本次修复**推送到公开仓库**（已推，远端 86c5c97）。
+- **用户追加线索（2026-10-21）**：症状二**中文正常、英文逐键跳**，且要求定位是远程插件还是分组插件 → 已定位到**远程插件的移动适配层全局 focus 猴补丁**（证据见下），本项目零涉及。
