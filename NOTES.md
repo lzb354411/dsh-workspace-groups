@@ -177,4 +177,14 @@ const patchedFocus = function (this: HTMLElement, options) {
 **我先前撤回的原因（横屏也坏）也得到解释**：吞不吞取决于模块内的 `active` 标志，而它只在 `evaluate()`（`resize`/`orientationchange`）跑到时才被改；若平板那条路径没触发重算，**层在两种朝向都仍处于 active** → 两向都坏（推断，未在平板实测）。
 **因此归属是「远程插件的 focus 补丁 × 官方输入框依赖 focus 复位」的交互问题，与分组插件无关。**
 **最省事的确认**：在平板上**点一下输入框后立刻连续打英文** —— 若最初约 0.8 秒正常、之后就跳（`lastComposerTap` 的 800ms 窗口），即确认；或在远程端控制台执行 `window.__dshRemoteAdapt.setEnabled(false)` 后再打英文，应立刻正常。
+
+### 第四轮：可逆补丁落地（2026-10-21，用户选 A）
+- **交付位置**：`E:\DSH\03-DSH-plugins\2026-10-21-remote-web-ui-focus-patch\`（任务目录），含 `patch.mjs`（锚点式、`--apply/--restore/--verify`）+ `apply/restore/verify` 三组双击产物（`.bat`=纯 ASCII 启动器、中文在带 BOM 的 `.ps1`）+ `README.md`。
+- **改了什么**：只改已装副本 `…\@linxin666\dsh-remote-web-ui\lib\client.js` 的那一处吞掉判断，新增两条**放行**——① 选区/光标已在该字段内；② 该字段 1500ms 内发生过 `beforeinput`/`input`（新增两个捕获监听只用于记时间戳）。带 `BEGIN/END` 哨兵与中文注释，其余零改动；Host 半边 `lib/index.js` 未动。
+- **备份两处**（都已独立核对 = 原件 `7256DE3F…FCBB`、245870 字节）：同目录 `client.js.bak-20261021-005906`；`E:\DSH\_backup\20261021-005906\Users\14544\.dsh\profiles\desktop\node_modules\@linxin666\dsh-remote-web-ui\lib\client.js`。
+- **补丁前后哈希**：原件 `7256DE3F81D886041291D6CC9C84103A60734D17F4D046EBC4E11A932F18FCBB` → 补丁后 `E4C358DBE2C90D588D8A775C98F1FC390CE44680672BDD31DD5B2E269791F95D`（245870 → 248296 字节，净增 34 行）。
+- **我独立跑通的往返（走双击产物）**：`restore.bat` → 哈希**逐字节回到原件**；`apply.bat` → 回到补丁后哈希；`verify.bat` 退出码 0 且正确报状态；`node --check` 退出码 0。**最终状态=已打补丁**。
+- **过程中抓到的真缺陷（实现者产出）**：`patch.mjs` 第 1 行 shebang 被写坏成 `!/usr/bin/env node`（丢了 `#`）→ Node 当正则解析 → **三个动作全部抛异常退出**，`apply` 因此一次都没真正生效（而 `restore` 之所以"看似成功"是实现者测往返时已还原、之后没再打上）。修法：补回 `#` 后三者全部正常。**教训与"没试过的回滚=没有回滚"同类：别人说"验证过"不算，必须自己按用户真实路径跑一遍。**
+- **待用户实测**：平板刷新页面后打英文。若无效或出现异常 → 双击 `restore.bat` 一键还原（已验证字节级）。
+- **已知限制**：插件升级或 DSH 升级覆盖该文件后补丁失效，需重跑 `apply.bat`；本补丁只治"光标跳最前"，不改插件其他行为（保留了它"挂载/切会话不抢焦点"的原意图）。
 - **用户追加线索（2026-10-21）**：症状二**中文正常、英文逐键跳**，且要求定位是远程插件还是分组插件 → 已定位到**远程插件的移动适配层全局 focus 猴补丁**（证据见下），本项目零涉及。
