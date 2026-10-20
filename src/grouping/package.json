@@ -1,0 +1,6 @@
+{
+	"name": "wsg-grouping-source",
+	"private": true,
+	"type": "module",
+	"_comment": "只为让 Node 把本目录的 *.pure.js 当 ESM 解析，好让 test/run-tests.mjs 直接 import 单测。不参与打包；build-fork.mjs 只按文本读取本目录，不受影响。"
+}

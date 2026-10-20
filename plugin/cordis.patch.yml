@@ -1,0 +1,27 @@
+# 组合补丁（本插件随身携带）—— 三件事：
+#
+#  ① 停用内置的那一行 `ui-workspace`。
+#     出处：官方 `@deepseek-ai/dsh-web-app/cordis.patch.yml` 里该行的原文是
+#         - id: ui-workspace
+#           name: '@deepseek-ai/dsh-client-ui-workspace'
+#     停用写法 `- id: <条目id>` + `disabled: true` 是官方插件页「启用/停用」用的同一套语法
+#     （见 @deepseek-ai/dsh-plugin-manager 的 writePluginEnabled）。
+#
+#  ② 插入本插件自己的行（Host 半边 + 客户端半边）。
+#     规则：client-module 扫描把这一行的 specifier 解析到「包根」再读 package.json 的 dsh.client，
+#     所以 name 必须**正好等于包名**，否则页面半边永远不会加载。
+#
+#  ③ 插入「同名副本」行：name 与官方完全一致，因此启动图里的条目名不变
+#     —— 实测该条目被 9 个包 inject（ui-sidebar / ui-conversation / ui-chat / ui-workflow-run
+#     / ui-subagent / ui-schedule / ui-agent-preset / agent-team / directory-picker-native），
+#     名字绝不能改；但解析基座是我们这个包所在的目录（profile 内），所以解析到的是
+#     fork/ 里那份**我们改过的**代码，而不是 app.asar 里的官方原件。
+#
+# 卸载本插件 = 删掉这个文件里的一切 = 官方那一行自动恢复。这就是回滚方式。
+- id: ui-workspace
+  disabled: true
+- insert:
+    - id: dsh-workspace-groups
+      name: dsh-workspace-groups
+    - id: ui-workspace-groups
+      name: '@deepseek-ai/dsh-client-ui-workspace'

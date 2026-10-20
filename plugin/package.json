@@ -1,0 +1,31 @@
+{
+  "name": "dsh-workspace-groups",
+  "version": "0.0.1",
+  "private": true,
+  "description": "DSH 侧栏工作区分组插件（探路版：验证接管 + 分组功能开发中）",
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-workspace": "file:../fork"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  }
+}
